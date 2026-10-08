@@ -1,0 +1,15 @@
+import { useEffect, useState } from "react";
+import { BookOpen, Clock3, Database, FileText } from "lucide-react";
+import { getAnalytics } from "../../api/analytics";
+import { PageHeading } from "../../components/PageHeading";
+import { PanelHeading } from "../../components/PanelHeading";
+import type { TranslationKey } from "../../i18n";
+
+type Translator = (key: TranslationKey) => string;
+export function Analytics({ t }: { t: Translator }) {
+  const [analytics, setAnalytics] = useState<Awaited<ReturnType<typeof getAnalytics>> | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => { getAnalytics().then(setAnalytics).catch(() => setAnalytics(null)).finally(() => setLoading(false)); }, []);
+  const values = analytics?.overview;
+  return <><PageHeading eyebrow={t("operations")} title={t("analyticsTitle")} detail={t("analyticsDetail")} action={<span className="demo-badge">{t("liveData")}</span>} /><section className="stat-grid"><div className="stat-card"><div className="stat-icon blue"><Clock3 /></div><span className="stat-label">{t("ragLatency")}</span><strong className="stat-value">{loading ? "..." : values?.appointments ?? 0}</strong><span className="stat-delta blue">{t("latencyTarget")}</span></div><div className="stat-card"><div className="stat-icon green"><FileText /></div><span className="stat-label">{t("summaryReviewRate")}</span><strong className="stat-value">{loading ? "..." : values?.follow_up_due ?? 0}</strong><span className="stat-delta green">{t("draftsReviewed")}</span></div><div className="stat-card"><div className="stat-icon orange"><Database /></div><span className="stat-label">{t("ocrDocuments")}</span><strong className="stat-value">{loading ? "..." : values?.patients ?? 0}</strong><span className="stat-delta orange">{t("liveMetric")}</span></div><div className="stat-card"><div className="stat-icon rose"><BookOpen /></div><span className="stat-label">{t("citationCoverage")}</span><strong className="stat-value">{loading ? "..." : values?.today_count ?? 0}</strong><span className="stat-delta rose">{t("sourcesAttached")}</span></div></section><div className="analytics-grid"><section className="panel chart-panel"><PanelHeading title={t("monthlyTrend")} detail={t("lastSixMonths")} /><div className="bar-chart">{(analytics?.department_breakdown.map((item) => Math.min(100, item.count * 10)) ?? [0, 0, 0, 0, 0, 0]).slice(0, 6).map((height, index) => <div className="bar-column" key={index}><span style={{ height: `${height}%` }} /><small>{["May", "Jun", "Jul", "Aug", "Sep", "Oct"][index]}</small></div>)}</div></section><section className="panel chart-panel"><PanelHeading title={t("departmentDistribution")} detail={t("currentWorkload")} /><div className="distribution"><div className="donut" /><ul><li><i className="dot teal" /> {t("internalMedicine")} <b>38%</b></li><li><i className="dot orange" /> {t("cardiologyReferral")} <b>25%</b></li><li><i className="dot blue" /> {t("pediatrics")} <b>20%</b></li><li><i className="dot rose" /> {t("other")} <b>17%</b></li></ul></div></section></div></>;
+}

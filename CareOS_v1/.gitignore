@@ -1,0 +1,51 @@
+# Node / frontend
+node_modules/
+dist/
+.vite/
+*.log
+
+# Python / backend
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Env / secrets
+.env
+.env.*
+*.env
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+*.pem
+
+# IDE / OS
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Coverage / tooling
+coverage/
+htmlcov/
+test-results/
+tempCodeRunnerFile.py
+
+# Database / local state (sensitive - keep ignoring)
+*.sqlite3
+*.db
+
+# Local uploaded clinical documents and recordings may contain PHI
+/storage/uploads/
+/backend/storage/uploads/
+backend/.venv/
+backend/__pycache__/
+backend/*.pyc
+node_modules/
+.env
+backend/careos.db
+backend/alembic.ini

@@ -1,0 +1,23 @@
+Before editing, here is the plan:
+
+Files that will change:
+1. `voice_agent/app/schemas/requests.py`
+2. `voice_agent/app/schemas/responses.py`
+3. `voice_agent/app/agent/voice_agent.py`
+4. `voice_agent/app/orchestration/booking_contract.py`
+5. `voice_agent/app/orchestration/client.py`
+6. `voice_agent/tests/test_voice_agent.py`
+7. `voice_agent/tests/test_careos_contract.py`
+8. `voice_agent/tests/test_careos_e2e_integration.py`
+9. `voice_agent/app/api.py`
+
+Current integration flow:
+Voice-Agent receives text -> Uses LLM to extract intent and parameters (like 'Cosmetics', 'Botox') -> Constructs `ActionRequest` inside `AgentRequest` -> Adapter `CareOSContract` translates intent to specific CareOS endpoints (like `POST /appointments` or `GET /appointments`) -> Returns `AgentResponse`.
+
+Exact reason each file needs modification:
+- `requests.py` & `responses.py`: Need to add fields for `message`, `conversation_id`, and `orchestrator_state` so they can be passed between the Voice Agent and CareOS.
+- `voice_agent.py`: Must bypass the local LLM intent extraction and parameter filling, and simply construct the `AgentRequest` with the raw text and state. Removes hardcoded domain assumptions (e.g., cosmetic clarification prompts).
+- `booking_contract.py`: Must be updated to act as a thin HTTP adapter that forwards the `AgentRequest` to `POST /assistant/chat` and maps the CareOS response, removing hardcoded references to Cosmetics, Botox, and UUID generation.
+- `client.py`: The `MockOrchestratorClient` needs to be updated to match the new `AgentRequest` structure.
+- `api.py`: Need to correctly extract intent string from new Response shape.
+- `tests/*`: Must be updated to reflect the new passthrough architecture, asserting that Voice-Agent correctly forwards text and state to `POST /api/v1/assistant/chat` without calling `/appointments`.

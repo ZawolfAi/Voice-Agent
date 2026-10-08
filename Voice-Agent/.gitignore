@@ -1,0 +1,43 @@
+# Environment variables & secrets (CRITICAL: Never commit .env)
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Python virtual environments
+.venv/
+.venv*/
+venv/
+ENV/
+env/
+
+# Python bytecode & caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Testing & quality caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Build & packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Editor & IDE configurations
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
