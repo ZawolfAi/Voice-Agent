@@ -80,10 +80,12 @@ def add_live_voice_route(
                 make_client = client_factory or genai.Client
                 blob_type = types.Blob
                 config_type = types.LiveConnectConfig
+                activity_end_type = getattr(types, "ActivityEnd", None)
             else:
                 make_client = client_factory
                 blob_type = live_types.Blob
                 config_type = live_types.LiveConnectConfig
+                activity_end_type = getattr(live_types, "ActivityEnd", None)
 
             client = make_client(api_key=settings.llm_api_key)
             if mode == "speech_to_text":
@@ -127,6 +129,11 @@ def add_live_voice_route(
                         if control:
                             try:
                                 if json.loads(control).get("type") == "stop":
+                                    if activity_end_type is not None:
+                                        try:
+                                            await session.send_realtime_input(activity_end=activity_end_type())
+                                        except Exception:
+                                            pass
                                     await session.send_realtime_input(audio_stream_end=True)
                                     user_stopped.set()
                                     try:
@@ -204,11 +211,39 @@ def add_live_voice_route(
 
                 sender = asyncio.create_task(send_microphone_to_gemini())
                 receiver = asyncio.create_task(send_gemini_to_browser())
-                tasks = {sender, receiver}
-                _, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-                for task in pending:
-                    task.cancel()
-                await asyncio.gather(*tasks, return_exceptions=True)
+                try:
+                    done, pending = await asyncio.wait(
+                        {sender, receiver},
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    if sender in done:
+                        sender_exc = sender.exception()
+                        if sender_exc is not None and not isinstance(
+                            sender_exc, (asyncio.CancelledError, WebSocketDisconnect)
+                        ):
+                            if receiver in pending:
+                                receiver.cancel()
+                                await asyncio.gather(receiver, return_exceptions=True)
+                            raise sender_exc
+                        if receiver in pending:
+                            await receiver
+                    else:
+                        receiver_exc = receiver.exception()
+                        if sender in pending:
+                            sender.cancel()
+                            await asyncio.gather(sender, return_exceptions=True)
+                        if receiver_exc is not None and not isinstance(
+                            receiver_exc, (asyncio.CancelledError, WebSocketDisconnect)
+                        ):
+                            raise receiver_exc
+                finally:
+                    for task in (sender, receiver):
+                        if not task.done():
+                            task.cancel()
+                            try:
+                                await task
+                            except Exception:
+                                pass
         except WebSocketDisconnect:
             pass
         except Exception as exc:

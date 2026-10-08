@@ -5,8 +5,16 @@ import sys
 import wave
 import websockets
 
-URI = "ws://127.0.0.1:8765/v1/voice/live"
-WAV_PATH = sys.argv[1] if len(sys.argv) > 1 else "test_input_16k.wav"
+def find_default_wav() -> str:
+    if len(sys.argv) > 1 and os.path.exists(sys.argv[1]):
+        return sys.argv[1]
+    for candidate in ["test_speech_16k.wav", "whatsapp_test_16k.wav", "test_input_16k.wav", "test_input.wav"]:
+        if os.path.exists(candidate):
+            return candidate
+    return "test_speech_16k.wav"
+
+WAV_PATH = find_default_wav()
+URI = os.getenv("VOICE_AGENT_WS_URI", "ws://127.0.0.1:8765/v1/voice/live")
 
 
 async def run_e2e_test() -> bool:
@@ -114,8 +122,11 @@ async def run_e2e_test() -> bool:
             chunks_sent = 0
             bytes_sent = 0
 
-            for i in range(0, len(pcm_data), chunk_size):
-                chunk = pcm_data[i : i + chunk_size]
+            # Append 1.0s of trailing silence (32000 bytes) so Gemini VAD detects speech end
+            full_audio = pcm_data + (b"\x00" * 32000)
+
+            for i in range(0, len(full_audio), chunk_size):
+                chunk = full_audio[i : i + chunk_size]
                 await ws.send(chunk)
                 chunks_sent += 1
                 bytes_sent += len(chunk)

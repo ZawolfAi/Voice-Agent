@@ -213,4 +213,120 @@ def test_transcribe_route_streams_mic_pcm_and_returns_dictation() -> None:
     assert final == {"type": "dictation_final", "text": "محتاج أحجز موعد"}
     assert done == {"type": "dictation_done"}
     assert session.stream_ended
-    assert fake_client.closed
+    assert fake_client.closed
+
+
+class SlowReceiverFakeSession:
+    """Fake session where receiver delayed-yields content AFTER sender completes."""
+
+    def __init__(self) -> None:
+        self.received_audio: list[FakeBlob] = []
+        self.stream_ended = False
+        self.sender_done = asyncio.Event()
+
+    async def send_realtime_input(
+        self, *, audio: FakeBlob | None = None, audio_stream_end: bool = False, text: str | None = None
+    ) -> None:
+        if audio is not None:
+            self.received_audio.append(audio)
+        if audio_stream_end:
+            self.stream_ended = True
+            self.sender_done.set()
+
+    async def receive(self):
+        await self.sender_done.wait()
+        yield SimpleNamespace(
+            server_content=SimpleNamespace(
+                interrupted=False,
+                interim_input_transcription=None,
+                input_transcription=SimpleNamespace(text="احجز لي دكتور عيون"),
+                output_transcription=SimpleNamespace(text="تم الحجز"),
+                model_turn=SimpleNamespace(
+                    parts=[SimpleNamespace(inline_data=SimpleNamespace(data=b"pcm-audio"))]
+                ),
+                turn_complete=True,
+            ),
+            go_away=None,
+        )
+
+
+def test_lifecycle_sender_finishes_before_receiver() -> None:
+    session = SlowReceiverFakeSession()
+    fake_client = FakeLiveClient(session)  # type: ignore[arg-type]
+    app = FastAPI()
+
+    add_live_voice_route(
+        app,
+        Settings(
+            _env_file=None,
+            app_env="development",
+            llm_provider="gemini",
+            llm_api_key="test-key-not-real",
+        ),
+        client_factory=lambda **kwargs: fake_client,
+        live_types=SimpleNamespace(Blob=FakeBlob, LiveConnectConfig=FakeLiveConnectConfig),
+    )
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/v1/voice/live") as websocket:
+            ready = websocket.receive_json()
+            websocket.send_bytes(b"pcm-data")
+            websocket.send_json({"type": "stop"})
+            input_text = websocket.receive_json()
+            output_text = websocket.receive_json()
+            audio = websocket.receive_bytes()
+            complete = websocket.receive_json()
+
+    assert ready["type"] == "ready"
+    assert input_text["type"] == "input_transcription"
+    assert input_text["text"] == "احجز لي دكتور عيون"
+    assert output_text["type"] == "output_transcription"
+    assert audio == b"pcm-audio"
+    assert complete["type"] == "turn_complete"
+    assert session.stream_ended
+    assert fake_client.closed
+
+
+class ExceptionReceiverFakeSession:
+    """Fake session where receiver raises an error while sender is running."""
+
+    def __init__(self) -> None:
+        pass
+
+    async def send_realtime_input(
+        self, *, audio: FakeBlob | None = None, audio_stream_end: bool = False, text: str | None = None
+    ) -> None:
+        await asyncio.sleep(10)
+
+    async def receive(self):
+        yield SimpleNamespace(
+            server_content=None,
+            go_away=True,
+        )
+
+
+def test_lifecycle_receiver_finishes_before_sender_cancels_sender_cleanly() -> None:
+    session = ExceptionReceiverFakeSession()
+    fake_client = FakeLiveClient(session)  # type: ignore[arg-type]
+    app = FastAPI()
+
+    add_live_voice_route(
+        app,
+        Settings(
+            _env_file=None,
+            app_env="development",
+            llm_provider="gemini",
+            llm_api_key="test-key-not-real",
+        ),
+        client_factory=lambda **kwargs: fake_client,
+        live_types=SimpleNamespace(Blob=FakeBlob, LiveConnectConfig=FakeLiveConnectConfig),
+    )
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/v1/voice/live") as websocket:
+            ready = websocket.receive_json()
+            reconnecting = websocket.receive_json()
+
+    assert ready["type"] == "ready"
+    assert reconnecting["type"] == "reconnecting"
+    assert fake_client.closed
